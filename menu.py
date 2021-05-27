@@ -70,7 +70,7 @@ def save_csvfile(results, headers, excel, instance):
         #look for data
         for res in results:
             if str(row[0].value) == str(res[1]):
-                if (res[3] is not None):
+                if (res[3] is not None and res[4] is not None):
                     row[24].value = res[3]
                     row[26].value = '=HYPERLINK("{}.pdf","Label")'.format(row[0].value)
                     #copy pdf if not exist
@@ -88,6 +88,25 @@ def save_csvfile(results, headers, excel, instance):
                 else:
                     row[25].value = ""
     wb.save(destination)
+
+def save_location(excel, location):
+    #change location
+    os.chdir(location)
+    #open to update
+    wb = load_workbook(excel)
+    active_sheet = wb[wb.sheetnames[0]]
+    max_column = 33
+    line_number = 2
+    for row in active_sheet.iter_rows(line_number, active_sheet.max_row, 1, max_column):
+        if row[0].value is None:
+            continue
+        #look for data
+        #create location if not exist
+        if not os.path.exists(row[20].value):
+            os.mkdir(row[20].value)
+        #copy file to destination if exist
+        if os.path.isfile(row[1].value + '.pdf'):
+            shutil.copyfile(row[1].value + '.pdf', "/" + row[20].value + "/" + row[1].value + '.pdf')
 
 def upload_orders(handler, instance):
     if len(handler.requests)==0:
@@ -128,22 +147,14 @@ def upload_shipments(handler, instance):
             result=create_delivery(request,out_folder)
             #get the deliveryid
             deliveryID = result['Delivery Id']
-            status = result['Status']
-            #validate SO already exist
-            if (status.find('Header already exist for SO')>0):
-                root_key=list(request.keys())[0]
-                ordernumber = request[root_key]['s']['OrderNumber']
-                username = request[root_key]['userName']
-                deliveryID,awb = get_delivery_details(ordernumber,username).split(',')
-                if (awb==''):
-                    deliveryID=int(deliveryID)
             if (isinstance(deliveryID, int)):
                 root_key=list(request.keys())[0]
                 #add delivery to request
                 request[root_key]['s']['Fourlogref']=int(deliveryID)
                 request['CreateShipment'] = request.pop('CreateDelivery')
                 #create the shipment
-                result2=create_delivery(request,out_folder)
+                result2=create_delivery(request,out_folder)                
+                result2['Delivery Id']=deliveryID
                 #save values
                 results.append(list(result2.values()))
             else:
@@ -158,13 +169,14 @@ def upload_shipments(handler, instance):
     print(tabulate.tabulate(results,headers=headers))
     save_csvfile(results, headers, handler.conf[6], instance)
     save_pdffile('outfiles/' + str(instance) + '/')
-	
+    save_location(handler.conf[6], 'outfiles/' + str(instance) + '/')
+
 orders=[]
 excel_handler=None
 actions = {
         '1': "Convert Excel",
         '2': "Upload Orders",
-		'3': "Upload Shipments",
+        '3': "Upload Shipments",
         '4': "Quit"
     }
 
